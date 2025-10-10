@@ -90,4 +90,22 @@ export class PaymentService {
       });
     });
   }
+
+  async remove(id: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id },
+    });
+
+    if (!payment) {
+      throw new NotFoundException(`Payment with id ${id} not found`);
+    }
+
+    const prescription_id = payment?.prescription_id;
+
+    await this.prisma.payment.delete({
+      where: { id },
+    });
+
+    return { message: `Payment with id ${id} has been deleted successfully`, prescription_id: prescription_id };
+  }
 }

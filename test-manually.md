@@ -48,3 +48,11 @@ curl -X PATCH http://localhost:4005/api/payments/pay/<id>
 
 curl -X PATCH http://localhost:4005/api/payments/pay/5a9c25ac-6c0c-4c04-9cf7-b50b9df50038
 curl -X PATCH http://localhost:4005/api/payments/pay/7ff71580-4d83-4bdd-971e-44b7334cabda
+
+
+============================================================
+5️⃣ Delete record
+============================================================
+curl -X DELETE http://localhost:4005/api/payments/<id>
+
+
