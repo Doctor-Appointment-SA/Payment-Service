@@ -44,10 +44,13 @@ curl -X PATCH http://localhost:4005/api/payments/cancel/5a9c25ac-6c0c-4c04-9cf7-
 ============================================================
 5️⃣ Mark as Paid
 ============================================================
-curl -X PATCH http://localhost:4005/api/payments/pay/<id>
+curl -X PATCH http://localhost:4005/api/payments/pay/<id> \
+  -H "Content-Type: application/json" \
+  -d '{"delivery":true}'
 
-curl -X PATCH http://localhost:4005/api/payments/pay/5a9c25ac-6c0c-4c04-9cf7-b50b9df50038
-curl -X PATCH http://localhost:4005/api/payments/pay/7ff71580-4d83-4bdd-971e-44b7334cabda
+curl -X PATCH http://localhost:4005/api/payments/pay/e5e98144-9d20-4cb6-bcbb-12097f3a556c \
+  -H "Content-Type: application/json" \
+  -d '{"delivery":false}'
 
 
 ============================================================
@@ -56,3 +59,68 @@ curl -X PATCH http://localhost:4005/api/payments/pay/7ff71580-4d83-4bdd-971e-44b
 curl -X DELETE http://localhost:4005/api/payments/<id>
 
 
+
+
+============================================================
+6️⃣ Tracking — Create (กรณีสร้างเอง ไม่ผ่านจ่ายเงิน)
+curl -X POST http://localhost:4005/api/tracking \
+  -H "Content-Type: application/json" \
+  -d '{
+    "payment_id": "adc42689-ee2d-4404-bd70-49a37a783ff3",
+    "status": "PREPARE"
+  }'
+
+
+ปกติเมื่อ PATCH /api/payments/pay/:id สำเร็จ ระบบจะ create tracking ให้อัตโนมัติแล้ว
+
+คำสั่งนี้ไว้สำหรับทดสอบ/seed เท่านั้น
+
+============================================================
+6.1 Tracking — Find One by Tracking ID
+# แทน <tracking_id> ด้วย id จริง
+curl -X GET http://localhost:4005/api/tracking/<tracking_id>
+
+============================================================
+6.2 Tracking — Find by Payment ID
+# ค้นหา tracking ของ payment นั้น ๆ
+curl -X GET "http://localhost:4005/api/tracking?payment_id=adc42689-ee2d-4404-bd70-49a37a783ff3"
+
+============================================================
+6.3 Tracking — Update Status (generic endpoint)
+# PREPARE -> SENDING
+curl -X PATCH http://localhost:4005/api/tracking/<tracking_id>/status \
+  -H "Content-Type: application/json" \
+  -d '{"status":"SENDING"}'
+
+curl -X PATCH http://localhost:4005/api/tracking/0f0d0dec-5b2c-4bef-9eb8-4d21cd486e6d/status \
+  -H "Content-Type: application/json" \
+  -d '{"status":"SENDING"}'
+
+# SENDING -> SUCCESS
+curl -X PATCH http://localhost:4005/api/tracking/<tracking_id>/status \
+  -H "Content-Type: application/json" \
+  -d '{"status":"SUCCESS"}'
+
+curl -X PATCH http://localhost:4005/api/tracking/0f0d0dec-5b2c-4bef-9eb8-4d21cd486e6d/status \
+  -H "Content-Type: application/json" \
+  -d '{"status":"SUCCESS"}'
+
+ค่า status ต้องเป็นหนึ่งใน: PREPARE | SENDING | SUCCESS
+
+(ถ้าคุณเปิด shortcut routes ตามตัวอย่างก่อนหน้า)
+============================================================
+6.3.1 Tracking — Update Status (shortcut routes)
+# ตั้ง PREPARE
+curl -X PATCH http://localhost:4005/api/tracking/<tracking_id>/prepare
+
+# ตั้ง SENDING
+curl -X PATCH http://localhost:4005/api/tracking/<tracking_id>/sending
+
+# ตั้ง SUCCESS
+curl -X PATCH http://localhost:4005/api/tracking/<tracking_id>/success
+
+============================================================
+6.4 Tracking — Delete
+curl -X DELETE http://localhost:4005/api/tracking/<tracking_id>
+
+curl -X DELETE http://localhost:4005/api/tracking/0f0d0dec-5b2c-4bef-9eb8-4d21cd486e6d

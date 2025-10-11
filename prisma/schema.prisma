@@ -27,6 +27,12 @@ enum PaymentMethod {
   CASH
 }
 
+enum TrackingStatus {
+  PREPARE
+  SENDING
+  SUCCESS
+}
+
 
 // -------------------------- annouce table --------------------------
 model appointment {
@@ -94,6 +100,7 @@ model payment {
   method          PaymentMethod?
   created_at      DateTime?     @db.Timestamp(6)
   prescription    prescription? @relation(fields: [prescription_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tracking        tracking?
 }
 
 model prescription {
@@ -107,7 +114,6 @@ model prescription {
   doctor            doctor?             @relation(fields: [doctor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   patient           patient?            @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   prescription_item prescription_item[]
-  tracking          tracking[]
 }
 
 model prescription_item {
@@ -141,9 +147,10 @@ model schedule {
 
 model tracking {
   id              String        @id @db.Uuid
-  prescription_id String?       @db.Uuid
-  status          String?
-  prescription    prescription? @relation(fields: [prescription_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_id      String?       @db.Uuid @unique
+  status          TrackingStatus?
+  location        String?
+  payment         payment?      @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model user {

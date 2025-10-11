@@ -39,8 +39,8 @@ export class PaymentController {
 
   // Pay -> status "success" - only when "pending"
   @Patch('pay/:id')
-  pay(@Param('id') id: string) {
-    return this.paymentService.pay(id);
+  pay(@Param('id') id: string, @Body("delivery") delivery: boolean) {
+    return this.paymentService.pay(id, delivery);
   }
 
   @Delete(':id')

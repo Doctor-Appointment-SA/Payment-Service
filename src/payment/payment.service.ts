@@ -4,11 +4,13 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Payment, Prescription } from './entities/payment.entity';
-import { PaymentStatus } from '@prisma/client';
+import { PaymentStatus, Prisma, PrismaClient, TrackingStatus } from '@prisma/client';
+import { TrackingService } from 'src/tracking/tracking.service';
+import { Tracking } from 'src/tracking/entities/tracking.entity';
 
 @Injectable()
 export class PaymentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly trackingService: TrackingService) {}
 
   async create(dto: CreatePaymentDto): Promise<Payment> {
     return this.prisma.payment.create({
@@ -76,19 +78,45 @@ export class PaymentService {
     });
   }
 
-  async pay(id: string): Promise<Payment> {
+  async pay(id: string, delivery: boolean): Promise<{payment_data: Payment; tracking_data: Tracking | null}> {
     return this.prisma.$transaction(async (tx) => {
-      const p = await tx.payment.findUnique({ where: { id } });
-      if (!p) throw new NotFoundException('Payment not found');
-      if (p.status !== PaymentStatus.PENDING) {
+      // Update status to Success (only if it's still pending)
+      const { count } = await tx.payment.updateMany({
+        where: { id, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.SUCCESS, created_at: new Date() },
+      });
+
+      if (count === 0) {
+        const exists = await tx.payment.findUnique({
+          where: { id },
+          select: { status: true },
+        });
+
+        if (!exists) throw new NotFoundException('Payment not found');
         throw new BadRequestException('Only pending payments can be paid');
       }
 
-      return tx.payment.update({
+      // Create tracking record
+      var tracking_data: Tracking|null = null;
+      if (delivery) {
+        tracking_data = await this.trackingService.createInTx({
+        payment_id: id,
+        status: TrackingStatus.PREPARE,
+      }, tx);
+      }
+
+      // Fetch updated payment
+      const payment_data: Payment = await this.payInTx(id, tx);
+
+      return {payment_data, tracking_data };
+    })
+  }
+
+  async payInTx(id: string, currentPrisma: Prisma.TransactionClient | PrismaClient = this.prisma): Promise<Payment> {
+    const payment_data: Payment = await currentPrisma.payment.findUniqueOrThrow({
         where: { id },
-        data: { status: PaymentStatus.SUCCESS },
-      });
     });
+    return payment_data;
   }
 
   async remove(id: string) {
