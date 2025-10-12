@@ -1,5 +1,5 @@
 import { TrackingStatus } from "@prisma/client";
-import { IsOptional, IsUUID } from "class-validator";
+import { IsOptional, IsString, IsUUID } from "class-validator";
 
 export class CreateTrackingDto {
   @IsUUID()
@@ -7,4 +7,7 @@ export class CreateTrackingDto {
 
   @IsOptional()
   status?: TrackingStatus; // default handled in service
+
+  @IsString()
+  location: string;
 }

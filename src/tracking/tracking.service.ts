@@ -4,6 +4,7 @@ import { CreateTrackingDto } from './dto/create-tracking.dto';
 import { UpdateTrackingStatusDto } from './dto/update-tracking.dto';
 import { randomUUID } from 'crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { trackingBus } from './stream/stream';
 
 @Injectable()
 export class TrackingService {
@@ -33,6 +34,7 @@ export class TrackingService {
         id: randomUUID(),
         payment_id: dto.payment_id,
         status: dto.status,
+        location: dto.location,
       },
     });
   }
@@ -53,10 +55,15 @@ export class TrackingService {
     // throws if not found
     await this.findById(id);
     console.log("update status:", dto.status);
-    return this.prisma.tracking.update({
+    const tracking_data = await this.prisma.tracking.update({
       where: { id },
       data: { status: dto.status },
     });
+
+    // event is emit by "tracking_id"
+    trackingBus.emit(tracking_data.id, { type: 'update', payload: tracking_data });
+
+    return tracking_data;
   }
 
   async delete(id: string) {

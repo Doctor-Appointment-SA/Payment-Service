@@ -7,6 +7,8 @@ import { Payment, Prescription } from './entities/payment.entity';
 import { PaymentStatus, Prisma, PrismaClient, TrackingStatus } from '@prisma/client';
 import { TrackingService } from 'src/tracking/tracking.service';
 import { Tracking } from 'src/tracking/entities/tracking.entity';
+import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
+import { UpdateTrackingStatusDto } from 'src/tracking/dto/update-tracking.dto';
 
 @Injectable()
 export class PaymentService {
@@ -78,8 +80,10 @@ export class PaymentService {
     });
   }
 
-  async pay(id: string, delivery: boolean): Promise<{payment_data: Payment; tracking_data: Tracking | null}> {
+  async pay(id: string, dto: ConfirmPaymentDto): Promise<{payment_data: Payment; tracking_data: Tracking | null}> {
     return this.prisma.$transaction(async (tx) => {
+      const delivery = dto.delivery;
+      const location = dto.location;
       // Update status to Success (only if it's still pending)
       const { count } = await tx.payment.updateMany({
         where: { id, status: PaymentStatus.PENDING },
@@ -102,7 +106,11 @@ export class PaymentService {
         tracking_data = await this.trackingService.createInTx({
         payment_id: id,
         status: TrackingStatus.PREPARE,
-      }, tx);
+        location: location,
+        }, tx);
+
+        // update delivery with setting time
+        this.fakeDeliveryProgress(tracking_data.id);
       }
 
       // Fetch updated payment
@@ -110,6 +118,20 @@ export class PaymentService {
 
       return {payment_data, tracking_data };
     })
+  }
+
+  private async fakeDeliveryProgress(tracking_id: string) {
+    const wait = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+    // PREPARE -> SENDING (after 10s)
+    await wait(10_000);
+    const send_dto: UpdateTrackingStatusDto = {status: TrackingStatus.SENDING}
+    await this.trackingService.updateStatus(tracking_id, send_dto);
+
+    // SENDING -> SUCCESS (after 20s)
+    await wait(10_000);
+    const send_dto2: UpdateTrackingStatusDto = {status: TrackingStatus.SUCCESS}
+    await this.trackingService.updateStatus(tracking_id, send_dto2);
   }
 
   async payInTx(id: string, currentPrisma: Prisma.TransactionClient | PrismaClient = this.prisma): Promise<Payment> {

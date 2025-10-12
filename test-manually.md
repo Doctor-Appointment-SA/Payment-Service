@@ -48,9 +48,9 @@ curl -X PATCH http://localhost:4005/api/payments/pay/<id> \
   -H "Content-Type: application/json" \
   -d '{"delivery":true}'
 
-curl -X PATCH http://localhost:4005/api/payments/pay/e5e98144-9d20-4cb6-bcbb-12097f3a556c \
+curl -X PATCH http://localhost:4005/api/payments/pay/ad9521ca-e131-4b19-8069-83948749023d \
   -H "Content-Type: application/json" \
-  -d '{"delivery":false}'
+  -d '{"delivery":true, "location":"my home test"}'
 
 
 ============================================================

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { PaymentService } from './payment.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
+import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 
 @Controller('payments')
 export class PaymentController {
@@ -39,8 +40,8 @@ export class PaymentController {
 
   // Pay -> status "success" - only when "pending"
   @Patch('pay/:id')
-  pay(@Param('id') id: string, @Body("delivery") delivery: boolean) {
-    return this.paymentService.pay(id, delivery);
+  pay(@Param('id') id: string, @Body() dto: ConfirmPaymentDto) {
+    return this.paymentService.pay(id, dto);
   }
 
   @Delete(':id')
