@@ -1,30 +1,71 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Payment, Prescription } from './entities/payment.entity';
-import { PaymentStatus, Prisma, PrismaClient, TrackingStatus } from '@prisma/client';
+import {
+  PaymentStatus,
+  Prisma,
+  PrismaClient,
+  TrackingStatus,
+} from '@prisma/client';
 import { TrackingService } from 'src/tracking/tracking.service';
 import { Tracking } from 'src/tracking/entities/tracking.entity';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { UpdateTrackingStatusDto } from 'src/tracking/dto/update-tracking.dto';
+import { paymentBus } from './stream/stream';
 
 @Injectable()
 export class PaymentService {
-  constructor(private readonly prisma: PrismaService, private readonly trackingService: TrackingService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly trackingService: TrackingService,
+  ) {}
 
   async create(dto: CreatePaymentDto): Promise<Payment> {
-    return this.prisma.payment.create({
+    const payment = await this.prisma.payment.create({
       data: {
-        id: randomUUID(),                        // If your Prisma schema has default: uuid(), you can omit this
+        id: randomUUID(), // If your Prisma schema has default: uuid(), you can omit this
         prescription_id: dto.prescription_id,
         cost: dto.cost,
-        status: PaymentStatus.PENDING,           // stored as string (text) in DB
+        status: PaymentStatus.PENDING, // stored as string (text) in DB
         method: dto.method,
-        created_at: new Date(),                   // if schema has @default(now()), you can omit this
+        created_at: new Date(), // if schema has @default(now()), you can omit this
       },
     });
+
+    // Auto-expire after 60 seconds (If it was still "PENDING" after 60 sec, turn it to "CANCEL")
+    let tick = 0;
+    const ticker = setInterval(async () => {
+      tick++;
+
+      // ping every 1 second for 60 times
+      const remaining = Math.max(0, 60 - tick);
+      paymentBus.emit(payment.id, { type: 'ping-ttl', payload: remaining });
+
+      // after 60 sec, CANCEL the payment, and push that to frontend
+      if (tick >= 60) {
+        clearInterval(ticker);
+        // only remove, if the record is in PENDING
+        const remove = await this.removeIfPending(payment.id);
+
+        if (remove.ok) {
+          paymentBus.emit(payment.id, {
+            type: 'remove',
+            payload: { prescription_id: remove.prescription_id },
+          });
+        } else {
+          paymentBus.emit(payment.id, { type: "remove-failed" });
+        }
+      }
+    }, 1000);
+
+    return payment;
   }
 
   async findOne(id: string): Promise<Payment> {
@@ -80,7 +121,10 @@ export class PaymentService {
     });
   }
 
-  async pay(id: string, dto: ConfirmPaymentDto): Promise<{payment_data: Payment; tracking_data: Tracking | null}> {
+  async pay(
+    id: string,
+    dto: ConfirmPaymentDto,
+  ): Promise<{ payment_data: Payment; tracking_data: Tracking | null }> {
     return this.prisma.$transaction(async (tx) => {
       const delivery = dto.delivery;
       const location = dto.location;
@@ -101,13 +145,16 @@ export class PaymentService {
       }
 
       // Create tracking record
-      var tracking_data: Tracking|null = null;
+      var tracking_data: Tracking | null = null;
       if (delivery) {
-        tracking_data = await this.trackingService.createInTx({
-        payment_id: id,
-        status: TrackingStatus.PREPARE,
-        location: location,
-        }, tx);
+        tracking_data = await this.trackingService.createInTx(
+          {
+            payment_id: id,
+            status: TrackingStatus.PREPARE,
+            location: location,
+          },
+          tx,
+        );
 
         // update delivery with setting time
         this.fakeDeliveryProgress(tracking_data.id);
@@ -116,28 +163,37 @@ export class PaymentService {
       // Fetch updated payment
       const payment_data: Payment = await this.payInTx(id, tx);
 
-      return {payment_data, tracking_data };
-    })
+      return { payment_data, tracking_data };
+    });
   }
 
   private async fakeDeliveryProgress(tracking_id: string) {
-    const wait = (ms: number) => new Promise(res => setTimeout(res, ms));
+    const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
     // PREPARE -> SENDING (after 10s)
     await wait(10_000);
-    const send_dto: UpdateTrackingStatusDto = {status: TrackingStatus.SENDING}
+    const send_dto: UpdateTrackingStatusDto = {
+      status: TrackingStatus.SENDING,
+    };
     await this.trackingService.updateStatus(tracking_id, send_dto);
 
     // SENDING -> SUCCESS (after 20s)
     await wait(10_000);
-    const send_dto2: UpdateTrackingStatusDto = {status: TrackingStatus.SUCCESS}
+    const send_dto2: UpdateTrackingStatusDto = {
+      status: TrackingStatus.SUCCESS,
+    };
     await this.trackingService.updateStatus(tracking_id, send_dto2);
   }
 
-  async payInTx(id: string, currentPrisma: Prisma.TransactionClient | PrismaClient = this.prisma): Promise<Payment> {
-    const payment_data: Payment = await currentPrisma.payment.findUniqueOrThrow({
+  async payInTx(
+    id: string,
+    currentPrisma: Prisma.TransactionClient | PrismaClient = this.prisma,
+  ): Promise<Payment> {
+    const payment_data: Payment = await currentPrisma.payment.findUniqueOrThrow(
+      {
         where: { id },
-    });
+      },
+    );
     return payment_data;
   }
 
@@ -156,6 +212,32 @@ export class PaymentService {
       where: { id },
     });
 
-    return { message: `Payment with id ${id} has been deleted successfully`, prescription_id: prescription_id };
+    return {
+      message: `Payment with id ${id} has been deleted successfully`,
+      prescription_id: prescription_id,
+    };
+  }
+
+  async removeIfPending(
+    id: string,
+  ): Promise<{ ok: boolean; prescription_id?: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const rec = await tx.payment.findUnique({
+        where: { id },
+        select: { prescription_id: true, status: true },
+      });
+
+      if (!rec || rec.status !== PaymentStatus.PENDING) {
+        return { ok: false };
+      }
+
+      // Atomic guard: only delete if still PENDING
+      const { count } = await tx.payment.deleteMany({
+        where: { id, status: PaymentStatus.PENDING },
+      });
+
+      if (count === 0) return { ok: false };
+      return { ok: true, prescription_id: rec.prescription_id };
+    });
   }
 }
