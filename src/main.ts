@@ -5,13 +5,13 @@ import 'reflect-metadata';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api'); 
+  app.setGlobalPrefix('api');
 
   app.enableCors({
     origin: ['http://localhost:3000', 'http://127.0.0.1:3000'], // exact origins
-    methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization'],
-    credentials: false,          // set true only if you use cookies
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true, // set true only if you use cookies
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });

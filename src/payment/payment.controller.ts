@@ -7,7 +7,9 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   Sse,
+  UseGuards,
 } from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -15,15 +17,22 @@ import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { Observable } from 'rxjs';
 import { paymentBus } from './stream/stream';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import type { Request, Response } from 'express';
 
 @Controller('payments')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
   // Create payment when prescription is created -> status "pending"
+  @UseGuards(JwtAuthGuard)
   @Post('create')
-  create(@Body() dto: CreatePaymentDto) {
-    return this.paymentService.create(dto);
+  create(@Body() dto: CreatePaymentDto, @Req() req: Request) {
+    const user: any = req.user;
+    const user_id = user?.sub;
+    console.log('user from req:', user);
+
+    return this.paymentService.create(dto, user_id);
   }
 
   // Read single (handy for testing)
@@ -51,9 +60,13 @@ export class PaymentController {
   }
 
   // Pay -> status "success" - only when "pending"
+  @UseGuards(JwtAuthGuard)
   @Patch('pay/:id')
-  pay(@Param('id') id: string, @Body() dto: ConfirmPaymentDto) {
-    return this.paymentService.pay(id, dto);
+  pay(@Param('id') id: string, @Body() dto: ConfirmPaymentDto, @Req() req:Request) {
+    const user:any = req.user;
+    const user_id = user?.sub;
+    console.log("user from pay:", user);
+    return this.paymentService.pay(id, dto, user_id);
   }
 
   @Delete(':id')

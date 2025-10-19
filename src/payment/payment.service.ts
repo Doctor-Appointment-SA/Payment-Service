@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -27,7 +28,17 @@ export class PaymentService {
     private readonly trackingService: TrackingService,
   ) {}
 
-  async create(dto: CreatePaymentDto): Promise<Payment> {
+  async create(dto: CreatePaymentDto, user_id: string): Promise<Payment> {
+    // first verify ownership
+    console.log('prescription_id', dto.prescription_id, ' user_id', user_id);
+    const found = await this.prisma.prescription.findFirst({
+      where: { id: dto.prescription_id, patient_id: user_id },
+      select: { id: true },
+    });
+    if (!found)
+      throw new ForbiddenException('You do not own this prescription');
+
+    // create the payment
     const payment = await this.prisma.payment.create({
       data: {
         id: randomUUID(), // If your Prisma schema has default: uuid(), you can omit this
@@ -60,7 +71,7 @@ export class PaymentService {
             payload: { prescription_id: remove.prescription_id },
           });
         } else {
-          paymentBus.emit(payment.id, { type: "remove-failed" });
+          paymentBus.emit(payment.id, { type: 'remove-failed' });
         }
       }
     }, 1000);
@@ -124,7 +135,21 @@ export class PaymentService {
   async pay(
     id: string,
     dto: ConfirmPaymentDto,
+    user_id: string,
   ): Promise<{ payment_data: Payment; tracking_data: Tracking | null }> {
+    // verify ownership
+    const found = await this.prisma.payment.findFirst({
+      where: {
+        id: id,
+        prescription: {
+          patient_id: user_id,
+        },
+      },
+      select: { id: true },
+    });
+    if (!found)
+      throw new ForbiddenException('You do not own this prescription');
+
     return this.prisma.$transaction(async (tx) => {
       const delivery = dto.delivery;
       const location = dto.location;
