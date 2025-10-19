@@ -4,50 +4,29 @@ generator client {
 
 generator erd {
   provider = "prisma-erd-generator"
-  output = "../ERD.svg"
+  output   = "../ERD.svg"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")    // Used by Prisma Migrate automatically
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
-// -------------------------- annouce enum --------------------------
-enum PaymentStatus {
-  PENDING
-  CANCEL
-  SUCCESS
-}
-
-enum PaymentMethod {
-  CREDIT
-  PROMPTPAY
-  BANK
-  CASH
-}
-
-enum TrackingStatus {
-  PREPARE
-  SENDING
-  SUCCESS
-}
-
-
-// -------------------------- annouce table --------------------------
 model appointment {
-  id           String    @id @db.Uuid
-  patient_id   String?   @db.Uuid
-  doctor_id    String?   @db.Uuid
-  appoint_date DateTime? @db.Timestamp(6)
-  status       String?
-  doctor       doctor?   @relation(fields: [doctor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  patient      patient?  @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id           String            @id @db.Uuid
+  patient_id   String?           @db.Uuid
+  doctor_id    String?           @db.Uuid
+  appoint_date DateTime?         @db.Timestamp(6)
+  status       AppointmentStatus @default(PENDING)
+  doctor       doctor?           @relation(fields: [doctor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patient      patient?          @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model doctor {
   id             String           @id @db.Uuid
   specialty      String?
+  detail         String?
   appointment    appointment[]
   user           user             @relation(fields: [id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   medical_record medical_record[]
@@ -71,6 +50,8 @@ model medication {
   name              String?
   description       String?
   price             Float?
+  strength          Float?
+  unit              UnitMethod?
   prescription_item prescription_item[]
 }
 
@@ -85,6 +66,9 @@ model notification {
 model patient {
   id                                 String           @id @db.Uuid
   hospital_number                    String?
+  symptom_note                       String?
+  blood_drawn_at                     DateTime?
+  missed_arv_days                    Int?
   appointment                        appointment[]
   medical_record                     medical_record[]
   user_patient_hospital_numberTouser user?            @relation("patient_hospital_numberTouser", fields: [hospital_number], references: [username], onDelete: NoAction, onUpdate: NoAction)
@@ -93,13 +77,13 @@ model patient {
 }
 
 model payment {
-  id              String        @id @db.Uuid
-  prescription_id String        @db.Uuid @unique
-  cost            Float?
+  id              String         @id @db.Uuid
+  prescription_id String         @unique @db.Uuid
+  created_at      DateTime?      @db.Timestamp(6)
   status          PaymentStatus  @default(PENDING)
   method          PaymentMethod?
-  created_at      DateTime?     @db.Timestamp(6)
-  prescription    prescription? @relation(fields: [prescription_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cost            Float?
+  prescription    prescription   @relation(fields: [prescription_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   tracking        tracking?
 }
 
@@ -109,7 +93,6 @@ model prescription {
   doctor_id         String?             @db.Uuid
   status            String?
   created_at        DateTime?           @db.Timestamp(6)
-  
   payment           payment?
   doctor            doctor?             @relation(fields: [doctor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   patient           patient?            @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -119,9 +102,8 @@ model prescription {
 model prescription_item {
   id              String        @id @db.Uuid
   medication_id   String?       @db.Uuid
-  prescription_id String?       @db.Uuid
   amount          Int?
-
+  prescription_id String?       @db.Uuid
   medication      medication?   @relation(fields: [medication_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   prescription    prescription? @relation(fields: [prescription_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
@@ -146,11 +128,11 @@ model schedule {
 }
 
 model tracking {
-  id              String        @id @db.Uuid
-  payment_id      String?       @db.Uuid @unique
-  status          TrackingStatus?
-  location        String?
-  payment         payment?      @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id         String          @id @db.Uuid
+  payment_id String?         @unique @db.Uuid
+  status     TrackingStatus?
+  location   String?
+  payment    payment?        @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model user {
@@ -169,4 +151,36 @@ model user {
   patient_patient_hospital_numberTouser patient[]      @relation("patient_hospital_numberTouser")
   patient_patient_idTouser              patient?       @relation("patient_idTouser")
   refresh_token                         refresh_token?
+}
+
+enum PaymentStatus {
+  PENDING
+  CANCEL
+  SUCCESS
+}
+
+enum PaymentMethod {
+  CREDIT
+  PROMPTPAY
+  BANK
+  CASH
+}
+
+enum TrackingStatus {
+  PREPARE
+  SENDING
+  SUCCESS
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETE
+  CANCEL
+}
+
+enum UnitMethod {
+  TABLET
+  CAPSULE
+  SYRUP
 }
