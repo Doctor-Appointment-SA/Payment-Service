@@ -169,6 +169,20 @@ export class PaymentService {
         throw new BadRequestException('Only pending payments can be paid');
       }
 
+      // Update prescription's status to "paid"
+      const paymentRecord = await tx.payment.findUnique({
+        where: { id },
+        select: { prescription_id: true },
+      });
+      const prescription_id = paymentRecord?.prescription_id ?? '';
+      if (!prescription_id) {
+        throw new BadRequestException('Payment has no linked prescription');
+      }
+      await tx.prescription.update({
+        where: { id: prescription_id },
+        data: { status: 'paid'}, // or PrescriptionStatus.PAID if you import the enum
+      });
+
       // Create tracking record
       var tracking_data: Tracking | null = null;
       if (delivery) {

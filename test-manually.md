@@ -1,7 +1,7 @@
 ============================================================
 1️⃣ Create Payment
 ============================================================
-curl -X POST http://localhost:4005/api/payments/create \
+curl -X POST http://localhost:5004/api/payments/create \
   -H "Content-Type: application/json" \
   -d '{
     "prescription_id": "f3583f40-2d92-423f-af71-d411ff4748d7",
