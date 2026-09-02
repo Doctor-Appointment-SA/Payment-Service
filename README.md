@@ -11,7 +11,9 @@
 
 - **การชำระเงิน** — สร้างรายการชำระเงินจากใบสั่งยา (prescription), แก้ไข, ยกเลิก และยืนยันการชำระเงิน
 - **สถานะการชำระเงิน** — `PENDING` → `SUCCESS` หรือ `CANCEL`
-- **ช่องทางการชำระเงิน** — `CREDIT` · `PROMPTPAY` · `BANK` · `CASH`
+- **หมดอายุอัตโนมัติใน 60 วินาที** — เมื่อสร้างรายการชำระเงินแล้ว ระบบจะนับถอยหลัง
+  แล้วส่งเวลาที่เหลือให้ frontend ทุกวินาทีผ่าน SSE ถ้าครบ 60 วินาทีแล้วยังเป็น `PENDING`
+  อยู่ รายการนั้นจะถูก **ลบทิ้ง** (ไม่ใช่เปลี่ยนสถานะเป็น `CANCEL`)
 - **ติดตามการจัดส่งยา** — `PREPARE` → `SENDING` → `SUCCESS`
   (สถานะจะเดินหน้าอัตโนมัติด้วยตัวจำลอง ยังไม่ได้เชื่อมกับระบบขนส่งจริง)
 - **อัปเดตแบบ real-time ด้วย SSE** — frontend เปิด connection ค้างไว้
@@ -19,7 +21,6 @@
 - **ยืนยันตัวตนด้วย JWT** — ใช้ token เดียวกับ [Authentication Service](https://github.com/Doctor-Appointment-SA/Authentication-Service)
 - **ตรวจสอบความเป็นเจ้าของ (Ownership Authorization)** — การสร้างและการยืนยันชำระเงิน
   จะตรวจว่าใบสั่งยานั้นเป็นของผู้ใช้ที่ล็อกอินอยู่จริงหรือไม่ ถ้าไม่ใช่จะตอบ `403 Forbidden`
-  (แค่ล็อกอินแล้วไม่พอ ต้องเป็นเจ้าของใบสั่งยาด้วย)
 - ใช้ **Prisma ORM** เชื่อมต่อฐานข้อมูล PostgreSQL
 
 ### ความสัมพันธ์ของข้อมูล
@@ -35,20 +36,20 @@ prescription  ─1:1─  payment  ─1:1─  tracking
 
 ## ⚙️ การติดตั้ง
 
-### 1️⃣ Clone โปรเจกต์
+### 1. Clone โปรเจกต์
 
 ```bash
 git clone https://github.com/Doctor-Appointment-SA/Payment-Service.git
 cd Payment-Service
 ```
 
-### 2️⃣ ติดตั้ง Dependencies
+### 2. ติดตั้ง Dependencies
 
 ```bash
 npm install
 ```
 
-### 3️⃣ ตั้งค่าไฟล์ `.env`
+### 3. ตั้งค่าไฟล์ `.env`
 
 ```env
 # Database
@@ -56,16 +57,20 @@ DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB_NAME"
 
 # JWT — ต้องใช้ค่าเดียวกับ Authentication Service
 JWT_ACCESS_SECRET=""
+
+# ไม่บังคับ (มีค่า default ให้แล้ว)
+JWT_ISSUER="auth-service"
+JWT_AUDIENCE="payment-service"
 ```
 
-### 4️⃣ สร้าง Prisma Client และ migrate ฐานข้อมูล
+### 4. สร้าง Prisma Client และ migrate ฐานข้อมูล
 
 ```bash
 npx prisma generate
 npx prisma migrate deploy
 ```
 
-### 5️⃣ รันเซิร์ฟเวอร์ Development
+### 5. รันเซิร์ฟเวอร์ Development
 
 ```bash
 npm run build
@@ -77,16 +82,26 @@ npm run start:dev
 > **หมายเหตุ:** CORS ถูกตั้งให้รับเฉพาะ `http://localhost:3000` เท่านั้น
 > ถ้ารัน frontend ที่ port อื่น ต้องแก้ที่ `src/main.ts`
 
-### 🐳 รันด้วย Docker
+### รันด้วย Docker
+
+Dockerfile ของ service นี้ไม่ได้ copy source เข้า image แต่ใช้วิธี mount source เข้าไปตอนรัน
+จึงต้องรันผ่าน [Infra](https://github.com/Doctor-Appointment-SA/Infra) ไม่ใช่ `docker build` เดี่ยว ๆ
 
 ```bash
-docker build -t payment-service .
-docker run -p 4004:4004 --env-file .env payment-service
+git clone https://github.com/Doctor-Appointment-SA/Infra.git
+cd Infra
+git submodule update --init --recursive
+docker compose up --build
 ```
+
+| วิธีรัน | Port ที่เรียกใช้ |
+|---|---|
+| `npm run start:dev` โดยตรง | `http://localhost:4004` |
+| ผ่าน `docker compose` (Infra) | `http://localhost:5004` |
 
 ---
 
-## 🔑 API Reference
+## API Reference
 
 ### Payment APIs
 
@@ -114,18 +129,35 @@ docker run -p 4004:4004 --env-file .env payment-service
 
 ---
 
-## 📡 การใช้งาน SSE (Server-Sent Events)
+## การใช้งาน SSE (Server-Sent Events)
 
 แทนที่ frontend จะ polling ถามสถานะซ้ำ ๆ ทุก ๆ กี่วินาที
 เราเปิด connection ค้างไว้เส้นเดียว แล้วให้ backend push ข้อมูลมาเองเมื่อมีการเปลี่ยนแปลง
 
-**ลำดับการทำงาน**
+มี 2 stream แยกกัน และ **ส่ง event คนละชุด**
 
-1. Frontend เปิด connection ไปที่ `/api/payments/stream/<payment_id>`
-2. Backend ส่ง event `init` พร้อมสถานะปัจจุบันกลับมาทันที
-3. เมื่อมีการเปลี่ยนสถานะ (เช่น มีคนกดจ่ายเงิน) backend จะ push event ใหม่ให้ทุก subscriber
-4. Backend ส่ง event `ping` เป็นระยะเพื่อไม่ให้ connection หลุด
-5. เมื่อ frontend ปิด connection ระบบจะถอน listener ออกให้อัตโนมัติ
+### Payment stream — `/api/payments/stream/:payment_id`
+
+| `type` | เมื่อไหร่ | `payload` |
+|---|---|---|
+| `init` | ทันทีที่เปิด connection | ข้อมูลการชำระเงินปัจจุบัน |
+| `ping` | ทุก 5 วินาที | — (กัน connection หลุด) |
+| `ping-ttl` | ทุก 1 วินาที หลังสร้างรายการ | จำนวนวินาทีที่เหลือก่อนหมดอายุ |
+| `remove` | ครบ 60 วินาทีแล้วยังไม่จ่าย | `{ prescription_id }` — รายการถูกลบแล้ว |
+| `remove-failed` | ลบไม่สำเร็จ (สถานะเปลี่ยนไปแล้ว) | — |
+
+> **ข้อควรรู้:** payment stream **ไม่ได้** ส่ง event ตอนจ่ายเงินหรือยกเลิกสำเร็จ
+> ถ้าต้องการสถานะล่าสุดหลังกดจ่าย ให้ใช้ค่าที่ตอบกลับมาจาก `PATCH /api/payments/pay/:id` โดยตรง
+
+### Tracking stream — `/api/tracking/stream/:tracking_id`
+
+| `type` | เมื่อไหร่ | `payload` |
+|---|---|---|
+| `init` | ทันทีที่เปิด connection | ข้อมูลการจัดส่งปัจจุบัน |
+| `ping` | ทุก 5 วินาที | — |
+| `update` | ทุกครั้งที่สถานะจัดส่งเปลี่ยน | ข้อมูลการจัดส่งชุดใหม่ |
+
+ตัวจำลองจะเดินสถานะให้เอง: `PREPARE` → `SENDING` (หลัง 10 วินาที) → `SUCCESS` (หลัง 20 วินาที)
 
 **ตัวอย่างฝั่ง frontend**
 
@@ -135,9 +167,13 @@ const es = new EventSource(`http://localhost:4004/api/payments/stream/${paymentI
 es.onmessage = (e) => {
   const event = JSON.parse(e.data);
 
-  if (event.type === 'ping') return;        // heartbeat เฉย ๆ
-  if (event.type === 'init') setPayment(event.payload);
-  else setPayment(event.payload);
+  switch (event.type) {
+    case 'ping':      return;                          // heartbeat เฉย ๆ
+    case 'init':      return setPayment(event.payload);
+    case 'ping-ttl':  return setSecondsLeft(event.payload);   // นับถอยหลัง
+    case 'remove':    es.close(); return onExpired();         // หมดเวลา ถูกลบแล้ว
+    case 'remove-failed': return;
+  }
 };
 
 es.onerror = () => es.close();
@@ -151,7 +187,7 @@ curl -N http://localhost:4004/api/payments/stream/<PAYMENT_ID>
 
 ---
 
-## 📖 ตัวอย่างการใช้งาน API
+## ตัวอย่างการใช้งาน API
 
 ### 1. สร้างรายการชำระเงิน
 
@@ -161,7 +197,8 @@ curl -X POST http://localhost:4004/api/payments/create \
   -H "Content-Type: application/json" \
   -d '{
     "prescription_id": "<PRESCRIPTION_ID>",
-    "cost": 450.00
+    "cost": 450.00,
+    "method": "PROMPTPAY"
   }'
 ```
 
@@ -173,12 +210,17 @@ curl -X GET http://localhost:4004/api/payments/prescription/<PRESCRIPTION_ID>
 
 ### 3. ยืนยันการชำระเงิน
 
+ระบุว่าต้องการให้จัดส่งยาหรือไม่ และส่งไปที่ไหน — ถ้า `delivery` เป็น `true`
+ระบบจะสร้างรายการ tracking ให้อัตโนมัติ พร้อมอัปเดตสถานะใบสั่งยาเป็น `paid`
+ทั้งหมดนี้ทำอยู่ใน transaction เดียวกัน
+
 ```bash
 curl -X PATCH http://localhost:4004/api/payments/pay/<PAYMENT_ID> \
   -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "method": "PROMPTPAY"
+    "delivery": true,
+    "location": "123 ถนนงามวงศ์วาน จตุจักร กรุงเทพฯ"
   }'
 ```
 
@@ -200,7 +242,7 @@ curl -X PATCH http://localhost:4004/api/tracking/<TRACKING_ID>/status \
 
 ---
 
-## 🗂️ โครงสร้างโปรเจกต์
+## โครงสร้างโปรเจกต์
 
 ```
 src/
@@ -220,7 +262,7 @@ src/
 
 ---
 
-## 📝 หมายเหตุ
+## หมายเหตุ
 
 - แทนค่า `<ACCESS_TOKEN>` ด้วย JWT ที่ได้จาก Authentication Service
 - `JWT_ACCESS_SECRET` ต้องตรงกับที่ Authentication Service ใช้ ไม่งั้น guard จะปฏิเสธทุก request
