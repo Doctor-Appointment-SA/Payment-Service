@@ -1,98 +1,230 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 💳 Payment Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+บริการนี้ทำหน้าที่จัดการ **การชำระเงิน (Payment)** และ **การติดตามการจัดส่งยา (Tracking)**
+เป็นหนึ่งใน service ของ [ระบบนัดหมายแพทย์](https://github.com/Doctor-Appointment-SA)
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+**Tech stack:** NestJS · Prisma ORM · PostgreSQL · JWT · Server-Sent Events (SSE)
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## ✨ Features
 
-## Project setup
+- **การชำระเงิน** — สร้างรายการชำระเงินจากใบสั่งยา (prescription), แก้ไข, ยกเลิก และยืนยันการชำระเงิน
+- **สถานะการชำระเงิน** — `PENDING` → `SUCCESS` หรือ `CANCEL`
+- **ช่องทางการชำระเงิน** — `CREDIT` · `PROMPTPAY` · `BANK` · `CASH`
+- **ติดตามการจัดส่งยา** — `PREPARE` → `SENDING` → `SUCCESS`
+  (สถานะจะเดินหน้าอัตโนมัติด้วยตัวจำลอง ยังไม่ได้เชื่อมกับระบบขนส่งจริง)
+- **อัปเดตแบบ real-time ด้วย SSE** — frontend เปิด connection ค้างไว้
+  แล้ว backend จะ push สถานะใหม่ให้ทันทีที่มีการเปลี่ยนแปลง โดยไม่ต้อง polling
+- **ยืนยันตัวตนด้วย JWT** — ใช้ token เดียวกับ [Authentication Service](https://github.com/Doctor-Appointment-SA/Authentication-Service)
+- **ตรวจสอบความเป็นเจ้าของ (Ownership Authorization)** — การสร้างและการยืนยันชำระเงิน
+  จะตรวจว่าใบสั่งยานั้นเป็นของผู้ใช้ที่ล็อกอินอยู่จริงหรือไม่ ถ้าไม่ใช่จะตอบ `403 Forbidden`
+  (แค่ล็อกอินแล้วไม่พอ ต้องเป็นเจ้าของใบสั่งยาด้วย)
+- ใช้ **Prisma ORM** เชื่อมต่อฐานข้อมูล PostgreSQL
 
-```bash
-$ npm install
+### ความสัมพันธ์ของข้อมูล
+
+```
+prescription  ─1:1─  payment  ─1:1─  tracking
 ```
 
-## Compile and run the project
+ใบสั่งยา 1 ใบมีรายการชำระเงินได้ 1 รายการ และการชำระเงิน 1 รายการมีการจัดส่งได้ 1 รายการ
+ดู ER diagram ฉบับเต็มได้ที่ [`ERD.svg`](./ERD.svg)
+
+---
+
+## ⚙️ การติดตั้ง
+
+### 1️⃣ Clone โปรเจกต์
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+git clone https://github.com/Doctor-Appointment-SA/Payment-Service.git
+cd Payment-Service
 ```
 
-## Run tests
+### 2️⃣ ติดตั้ง Dependencies
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
 ```
 
-## Deployment
+### 3️⃣ ตั้งค่าไฟล์ `.env`
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+```env
+# Database
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB_NAME"
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+# JWT — ต้องใช้ค่าเดียวกับ Authentication Service
+JWT_ACCESS_SECRET=""
+```
+
+### 4️⃣ สร้าง Prisma Client และ migrate ฐานข้อมูล
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npx prisma generate
+npx prisma migrate deploy
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 5️⃣ รันเซิร์ฟเวอร์ Development
 
-## Resources
+```bash
+npm run build
+npm run start:dev
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+เซิร์ฟเวอร์จะรันที่ `http://localhost:4004` และทุก endpoint จะขึ้นต้นด้วย `/api`
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+> **หมายเหตุ:** CORS ถูกตั้งให้รับเฉพาะ `http://localhost:3000` เท่านั้น
+> ถ้ารัน frontend ที่ port อื่น ต้องแก้ที่ `src/main.ts`
 
-## Support
+### 🐳 รันด้วย Docker
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+docker build -t payment-service .
+docker run -p 4004:4004 --env-file .env payment-service
+```
 
-## Stay in touch
+---
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## 🔑 API Reference
 
-## License
+### Payment APIs
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Method | Endpoint | คำอธิบาย | ต้องมี Token |
+|---|---|---|:---:|
+| `POST` | `/api/payments/create` | สร้างรายการชำระเงินจากใบสั่งยา | ✅ |
+| `GET` | `/api/payments/:id` | ดูรายการชำระเงินตาม ID | — |
+| `GET` | `/api/payments/prescription/:id` | ดูรายการชำระเงินจาก prescription ID | — |
+| `PATCH` | `/api/payments/update/:id` | แก้ไขยอดเงิน (เฉพาะตอนสถานะ `PENDING`) | — |
+| `PATCH` | `/api/payments/cancel/:id` | ยกเลิกการชำระเงิน | — |
+| `PATCH` | `/api/payments/pay/:id` | ยืนยันการชำระเงิน (เฉพาะตอนสถานะ `PENDING`) | ✅ |
+| `DELETE` | `/api/payments/:id` | ลบรายการชำระเงิน | — |
+| `GET` | `/api/payments/stream/:payment_id` | **SSE** — รับสถานะการชำระเงินแบบ real-time | — |
+
+### Tracking APIs
+
+| Method | Endpoint | คำอธิบาย | ต้องมี Token |
+|---|---|---|:---:|
+| `POST` | `/api/tracking` | สร้างรายการจัดส่ง | — |
+| `GET` | `/api/tracking/:id` | ดูรายการจัดส่งตาม ID | — |
+| `GET` | `/api/tracking?payment_id=<ID>` | ดูรายการจัดส่งจาก payment ID | — |
+| `PATCH` | `/api/tracking/:id/status` | อัปเดตสถานะการจัดส่ง | — |
+| `DELETE` | `/api/tracking/:id` | ลบรายการจัดส่ง | — |
+| `GET` | `/api/tracking/stream/:tracking_id` | **SSE** — รับสถานะการจัดส่งแบบ real-time | — |
+
+---
+
+## 📡 การใช้งาน SSE (Server-Sent Events)
+
+แทนที่ frontend จะ polling ถามสถานะซ้ำ ๆ ทุก ๆ กี่วินาที
+เราเปิด connection ค้างไว้เส้นเดียว แล้วให้ backend push ข้อมูลมาเองเมื่อมีการเปลี่ยนแปลง
+
+**ลำดับการทำงาน**
+
+1. Frontend เปิด connection ไปที่ `/api/payments/stream/<payment_id>`
+2. Backend ส่ง event `init` พร้อมสถานะปัจจุบันกลับมาทันที
+3. เมื่อมีการเปลี่ยนสถานะ (เช่น มีคนกดจ่ายเงิน) backend จะ push event ใหม่ให้ทุก subscriber
+4. Backend ส่ง event `ping` เป็นระยะเพื่อไม่ให้ connection หลุด
+5. เมื่อ frontend ปิด connection ระบบจะถอน listener ออกให้อัตโนมัติ
+
+**ตัวอย่างฝั่ง frontend**
+
+```javascript
+const es = new EventSource(`http://localhost:4004/api/payments/stream/${paymentId}`);
+
+es.onmessage = (e) => {
+  const event = JSON.parse(e.data);
+
+  if (event.type === 'ping') return;        // heartbeat เฉย ๆ
+  if (event.type === 'init') setPayment(event.payload);
+  else setPayment(event.payload);
+};
+
+es.onerror = () => es.close();
+```
+
+**ทดสอบด้วย curl**
+
+```bash
+curl -N http://localhost:4004/api/payments/stream/<PAYMENT_ID>
+```
+
+---
+
+## 📖 ตัวอย่างการใช้งาน API
+
+### 1. สร้างรายการชำระเงิน
+
+```bash
+curl -X POST http://localhost:4004/api/payments/create \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prescription_id": "<PRESCRIPTION_ID>",
+    "cost": 450.00
+  }'
+```
+
+### 2. ดูรายการชำระเงินจากใบสั่งยา
+
+```bash
+curl -X GET http://localhost:4004/api/payments/prescription/<PRESCRIPTION_ID>
+```
+
+### 3. ยืนยันการชำระเงิน
+
+```bash
+curl -X PATCH http://localhost:4004/api/payments/pay/<PAYMENT_ID> \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "PROMPTPAY"
+  }'
+```
+
+### 4. ยกเลิกการชำระเงิน
+
+```bash
+curl -X PATCH http://localhost:4004/api/payments/cancel/<PAYMENT_ID>
+```
+
+### 5. อัปเดตสถานะการจัดส่ง
+
+```bash
+curl -X PATCH http://localhost:4004/api/tracking/<TRACKING_ID>/status \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "SENDING"
+  }'
+```
+
+---
+
+## 🗂️ โครงสร้างโปรเจกต์
+
+```
+src/
+├── auth/
+│   └── jwt-auth.guard.ts        # Guard ตรวจ JWT ที่ส่งมาจาก Authentication Service
+├── strategies/
+│   └── jwt.strategy.ts          # ถอด token แล้ว attach user เข้า request
+├── payment/
+│   ├── payment.controller.ts    # REST endpoints + SSE stream
+│   ├── payment.service.ts       # business logic + เงื่อนไขการเปลี่ยนสถานะ
+│   ├── dto/                     # validation schema ของแต่ละ request
+│   ├── entities/                # enum: PaymentStatus, PaymentMethod
+│   └── stream/stream.ts         # event bus สำหรับ push ข้อมูลเข้า SSE
+├── tracking/                    # โครงสร้างเดียวกับ payment
+└── prisma/                      # Prisma service + connection
+```
+
+---
+
+## 📝 หมายเหตุ
+
+- แทนค่า `<ACCESS_TOKEN>` ด้วย JWT ที่ได้จาก Authentication Service
+- `JWT_ACCESS_SECRET` ต้องตรงกับที่ Authentication Service ใช้ ไม่งั้น guard จะปฏิเสธทุก request
+- ทุก endpoint ผ่าน `ValidationPipe` แบบ `whitelist` — field ที่ไม่ได้ประกาศไว้ใน DTO จะถูกตัดทิ้งอัตโนมัติ
+- ยอดเงินเก็บเป็น `Float` — ถ้าจะใช้งานจริงควรเปลี่ยนเป็น `Decimal` เพื่อเลี่ยงปัญหาปัดเศษ
+- การจัดส่งยาใช้ตัวจำลองเดินสถานะให้อัตโนมัติ (`fakeDeliveryProgress`) เพื่อให้ทดสอบ SSE ได้
+  โดยไม่ต้องต่อกับระบบขนส่งจริง
